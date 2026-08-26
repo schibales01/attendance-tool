@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>学生出勤与课堂分数记录</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f0f2f5; color: #333; }
+header { background: #2b579a; color: #fff; padding: 10px 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+header h1 { font-size: 18px; margin-right: 4px; flex: 1; min-width: 140px; }
+.btn { padding: 9px 14px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; background: #fff; color: #2b579a; border: 1px solid #c9d4e5; }
+.btn:active { transform: scale(.96); }
+.btn.primary { background: #2b579a; color: #fff; border-color: #2b579a; }
+select, input { padding: 9px; border-radius: 8px; border: 1px solid #c9d4e5; font-size: 15px; }
+#toolbar { background: #fff; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-bottom: 2px solid #e5e9f0; }
+#toolbar .spacer { flex: 1; }
+#status { color: #888; font-size: 13px; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: #666; padding: 6px 12px; background: #fff; border-bottom: 1px solid #e5e9f0; }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.legend .dot { width: 13px; height: 13px; border-radius: 3px; border: 1px solid #ccc; display: inline-block; }
+
+/* ===== 表格视图 ===== */
+#tableWrap { padding: 10px; overflow-x: auto; }
+table { border-collapse: collapse; background: #fff; font-size: 13px; }
+th, td { border: 1px solid #d8dee8; padding: 5px 6px; text-align: center; white-space: nowrap; }
+th { background: #eef2f8; }
+th.rot { writing-mode: vertical-lr; text-orientation: mixed; height: 84px; font-size: 11px; }
+td.name { text-align: left; min-width: 76px; font-weight: 600; }
+td.att { cursor: pointer; font-size: 15px; font-weight: bold; user-select: none; min-width: 40px; }
+td.att.att-ok { color: #1e8449; background: #eafaf1; }
+td.att.att-late { color: #b9770e; background: #fef9e7; }
+td.att.att-leave { color: #c0392b; background: #fdedec; }
+td.att.att-absent { color: #7f8c8d; background: #eef0f1; }
+td.score { cursor: pointer; min-width: 50px; }
+td.score input { width: 46px; padding: 3px; text-align: center; border: 1px solid #bcd0ea; font-size: 14px; }
+
+/* ===== 录入视图（手机优先） ===== */
+#entryView { display: none; padding: 10px; max-width: 640px; margin: 0 auto; }
+.entry-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.entry-toolbar select { flex: 1; font-size: 16px; }
+.entry-toolbar .btn { white-space: nowrap; }
+.entry-head { display: flex; align-items: center; background: #eef2f8; border-radius: 10px 10px 0 0; padding: 10px 12px; font-weight: 700; font-size: 14px; }
+.entry-head .n { flex: 1.2; }
+.entry-head .a { flex: .9; text-align: center; }
+.entry-head .s { flex: 1; text-align: center; }
+.entry-row { display: flex; align-items: center; background: #fff; border-bottom: 1px solid #e8edf4; padding: 8px 12px; }
+.entry-row .n { flex: 1.2; font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entry-att { flex: .9; text-align: center; }
+.entry-att .b { width: 100%; max-width: 110px; height: 46px; border: 2px solid #d5dde9; border-radius: 10px; background: #f7f9fc; font-size: 17px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.entry-att .b.ok { background: #eafaf1; border-color: #27ae60; color: #1e8449; }
+.entry-att .b.late { background: #fef9e7; border-color: #f39c12; color: #b9770e; }
+.entry-att .b.leave { background: #fdedec; border-color: #e74c3c; color: #c0392b; }
+.entry-att .b.absent { background: #eef0f1; border-color: #95a5a6; color: #7f8c8d; }
+.entry-score { flex: 1; text-align: right; }
+.entry-score input { width: 100%; max-width: 110px; height: 46px; text-align: center; font-size: 18px; border: 2px solid #d5dde9; border-radius: 10px; }
+.entry-empty { background: #fff; border-radius: 10px; padding: 30px 16px; text-align: center; color: #999; }
+.entry-progress { background: #fff; border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; color: #555; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.entry-progress .bar { flex: 1; min-width: 80px; height: 8px; background: #e8edf4; border-radius: 4px; overflow: hidden; }
+.entry-progress .bar i { display: block; height: 100%; background: #2b579a; border-radius: 4px; transition: width .3s; }
+.notice-bar { background: #fdf3d7; color: #8a6d1a; padding: 8px 12px; font-size: 13px; display: none; align-items: center; gap: 8px; flex-wrap: wrap; }
+.notice-bar .btn { padding: 4px 10px; font-size: 12px; }
+.notice-bar .right { margin-left: auto; display: flex; gap: 6px; }
+
+/* ===== 弹窗 ===== */
+.modal-mask { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 50; align-items: center; justify-content: center; }
+.modal-mask.show { display: flex; }
+.modal { background: #fff; border-radius: 12px; padding: 18px; width: min(560px, 94vw); max-height: 86vh; overflow: auto; }
+.modal h2 { font-size: 17px; margin-bottom: 12px; color: #2b579a; }
+.modal .row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+.modal .row label { min-width: 56px; color: #666; }
+.modal .hint { color: #999; font-size: 12px; margin-top: 8px; }
+.chip { display: flex; align-items: center; gap: 6px; background: #eef2f8; border-radius: 20px; padding: 6px 8px 6px 14px; font-size: 14px; }
+.chip button { border: none; background: none; color: #c0392b; font-size: 15px; cursor: pointer; }
+.students-list, .session-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 12px 0; }
+.stat-card { background: #f7f9fc; border-radius: 10px; padding: 12px; text-align: center; border: 1px solid #e3e9f2; }
+.stat-card .v { font-size: 20px; font-weight: 700; color: #2b579a; }
+.stat-card .k { font-size: 12px; color: #888; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="notice-bar" id="noticeBar"></div>
+<header>
+  <h1>📒 出勤课堂记录</h1>
+  <select id="classSelect" title="选择班级"></select>
+  <button class="btn" onclick="openClassModal()">班级</button>
+  <button class="btn" onclick="openSummary()">📊</button>
+  <button class="btn" onclick="exportCSV()">⬇</button>
+  <button class="btn" onclick="backupJSON()">💾备份</button>
+  <button class="btn" onclick="restoreJSON()">📥恢复</button>
+</header>
+<div id="toolbar">
+  <button class="btn primary" id="viewEntryBtn" onclick="setView('entry')">✍️ 录入</button>
+  <button class="btn" id="viewTableBtn" onclick="setView('table')">📋 表格</button>
+  <span id="status"></span>
+  <span class="spacer"></span>
+  <button class="btn primary" onclick="addSession()">＋ 新增课次</button>
+</div>
+<div class="legend">
+  <span><span class="dot" style="background:#eafaf1"></span>√出勤</span>
+  <span><span class="dot" style="background:#fef9e7"></span>半√迟到</span>
+  <span><span class="dot" style="background:#fdedec"></span>假请假</span>
+  <span><span class="dot" style="background:#eef0f1"></span>缺缺勤</span>
+  <span style="color:#888">点出勤格循环切换 · 分数格直接填</span>
+</div>
+
+<!-- 录入视图 -->
+<div id="entryView">
+  <div class="entry-toolbar">
+    <select id="entrySession" onchange="renderEntry()"></select>
+    <button class="btn" onclick="openStudentsModal()">学生</button>
+  </div>
+  <div class="entry-progress" id="entryProgress"></div>
+  <div class="entry-head"><span class="n">学生</span><span class="a">出勤</span><span class="s">课堂分</span></div>
+  <div id="entryList"></div>
+</div>
+
+<!-- 表格视图 -->
+<div id="tableWrap"><table id="grid"></table></div>
+
+<!-- 班级管理 -->
+<div class="modal-mask" id="classModal">
+  <div class="modal">
+    <h2>班级管理</h2>
+    <div class="row"><label>班级名</label><input id="newClassName" placeholder="如：四年级" style="flex:1"><button class="btn primary" onclick="addClass()">新建</button></div>
+    <div class="session-list" id="classList"></div>
+    <div class="hint">新建班级自动切换。删除班级会删除该班所有记录。手机端可用「学生」按钮添加学生。</div>
+    <div class="row" style="margin-top:14px"><button class="btn" onclick="closeModal('classModal')">关闭</button></div>
+  </div>
+</div>
+<!-- 学生名单 -->
+<div class="modal-mask" id="studentsModal">
+  <div class="modal">
+    <h2>学生名单（<span id="stuClassName"></span>）</h2>
+    <div class="row"><label>姓名</label><input id="newStudentName" placeholder="输入姓名，可批量粘贴" style="flex:1"><button class="btn primary" onclick="addStudent()">添加</button></div>
+    <div class="hint">批量：一次粘贴多个姓名，用空格/逗号/换行分隔。</div>
+    <div class="students-list" id="studentList"></div>
+    <div class="row" style="margin-top:14px"><button class="btn" onclick="closeModal('studentsModal')">关闭</button></div>
+  </div>
+</div>
+<!-- 课次管理 -->
+<div class="modal-mask" id="sessionsModal">
+  <div class="modal">
+    <h2>课次管理（<span id="sesClassName"></span>）</h2>
+    <div class="row"><label>课次名</label><input id="newSessionName" placeholder="留空自动带日期" style="flex:1"><button class="btn primary" onclick="addSession()">新增</button></div>
+    <div class="session-list" id="sessionList"></div>
+    <div class="row" style="margin-top:14px"><button class="btn" onclick="closeModal('sessionsModal')">关闭</button></div>
+  </div>
+</div>
+<!-- 统计汇总 -->
+<div class="modal-mask" id="summaryModal">
+  <div class="modal" style="width:min(860px,96vw)">
+    <h2>统计汇总（<span id="sumClassName"></span>）</h2>
+    <div class="stats" id="statCards"></div>
+    <div style="overflow-x:auto"><table id="summaryTable"></table></div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn primary" onclick="exportSummaryCSV()">导出汇总CSV</button>
+      <button class="btn" onclick="closeModal('summaryModal')">关闭</button>
+    </div>
+    <div class="hint">出勤率 = 出勤次数 ÷ 已记录课次数（√+半√+假+缺 都算已记录）。课堂平均分只算有分数的课次。</div>
+  </div>
+</div>
+<script>
+"use strict";
+// ================= 数据层 =================
+const STORE_KEY = 'attendance_tool_v1';
+const ATT_STATES = ['', '√', '半√', '假', '缺'];
+let state = { classes: {}, order: [] };
+let currentClass = null;
+let viewMode = 'entry';
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) state = JSON.parse(raw);
+  } catch (e) { console.warn(e); }
+  if (!state.classes) state = { classes: {}, order: [] };
+  if (!state.meta) state.meta = {};
+  if (state.order && state.order.length && !currentClass) currentClass = state.order[0];
+}
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+  catch (e) { alert('⚠ 浏览器存储不可用，请用「备份」保存数据。'); }
+}
+function cls() { return state.classes[currentClass]; }
+function todayMD() {
+  const d = new Date();
+  return (d.getMonth() + 1) + '.' + d.getDate();
+}
+function autoSessionLabel(c) {
+  return '第' + (c.sessions.length + 1) + '次课 ' + todayMD();
+}
+
+// ================= 班级 =================
+function addClass() {
+  const name = document.getElementById('newClassName').value.trim();
+  if (!name) { alert('请输入班级名'); return; }
+  const id = 'c' + Date.now();
+  state.classes[id] = { name, students: [], sessions: [], records: {} };
+  state.order.push(id);
+  currentClass = id;
+  document.getElementById('newClassName').value = '';
+  save(); renderAll();
+  openStudentsModal();
+}
+function renameClass(id) {
+  const name = prompt('修改班级名：', state.classes[id].name);
+  if (name && name.trim()) { state.classes[id].name = name.trim(); save(); renderAll(); }
+}
+function removeClass(id) {
+  if (!confirm('删除班级「' + state.classes[id].name + '」？所有记录将删除！')) return;
+  delete state.classes[id];
+  state.order = state.order.filter(x => x !== id);
+  if (currentClass === id) currentClass = state.order[0] || null;
+  save(); renderAll();
+}
+function switchClass(id) {
+  if (!id) return;
+  currentClass = id;
+  document.getElementById('classSelect').value = id;
+  renderAll();
+}
+
+// ================= 学生 =================
+function addStudent() {
+  const val = document.getElementById('newStudentName').value.trim();
+  if (!val) return;
+  const names = val.split(/[\s,，、;；\n]+/).filter(Boolean);
+  const c = cls(); if (!c) return;
+  for (const n of names) {
+    if (!c.students.includes(n)) {
+      c.students.push(n);
+      if (!c.records[n]) c.records[n] = {};
+    }
+  }
+  document.getElementById('newStudentName').value = '';
+  save(); renderAll(); renderStudentsModal();
+}
+function removeStudent(name) {
+  if (!confirm('删除学生「' + name + '」及其全部记录？')) return;
+  const c = cls();
+  c.students = c.students.filter(x => x !== name);
+  delete c.records[name];
+  save(); renderAll(); renderStudentsModal();
+}
+
+// ================= 课次 =================
+function addSession() {
+  const inp = document.getElementById('newSessionName');
+  const c = cls(); if (!c) return;
+  const label = (inp && inp.value.trim()) ? inp.value.trim() : autoSessionLabel(c);
+  c.sessions.push({ id: 's' + Date.now(), label });
+  if (inp) inp.value = '';
+  save(); renderAll(); renderSessionsModal();
+}
+function renameSession(id) {
+  const c = cls();
+  const s = c.sessions.find(x => x.id === id);
+  const label = prompt('修改课次名：', s.label);
+  if (label && label.trim()) { s.label = label.trim(); save(); renderAll(); renderSessionsModal(); }
+}
+function removeSession(id) {
+  const c = cls();
+  if (!confirm('删除该课次？所有学生这课记录将删除。')) return;
+  c.sessions = c.sessions.filter(x => x.id !== id);
+  for (const n in c.records) delete c.records[n][id];
+  save(); renderAll(); renderSessionsModal();
+}
+
+// ================= 记录 =================
+function cycleAtt(name, sid) {
+  const c = cls();
+  const rec = c.records[name][sid] || (c.records[name][sid] = {});
+  const idx = ATT_STATES.indexOf(rec.att || '');
+  rec.att = ATT_STATES[(idx + 1) % ATT_STATES.length];
+  save(); renderGrid(); renderEntry();
+}
+function setScore(name, sid, val) {
+  const c = cls();
+  const rec = c.records[name][sid] || (c.records[name][sid] = {});
+  const n = parseFloat(val);
+  rec.score = (val === '' || isNaN(n)) ? undefined : n;
+  save();
+}
+
+// ================= 视图切换 =================
+function setView(mode) {
+  viewMode = mode;
+  document.getElementById('entryView').style.display = mode === 'entry' ? 'block' : 'none';
+  document.getElementById('tableWrap').style.display = mode === 'table' ? 'block' : 'none';
+  document.getElementById('viewEntryBtn').classList.toggle('primary', mode === 'entry');
+  document.getElementById('viewTableBtn').classList.toggle('primary', mode === 'table');
+  if (mode === 'entry') renderEntry();
+}
+
+// ================= 渲染 =================
+function renderAll() {
+  renderClassSelect();
+  renderToolbar();
+  renderGrid();
+  renderEntry();
+  if (window.innerWidth < 768) setView('entry'); else setView('table');
+}
+function renderClassSelect() {
+  const sel = document.getElementById('classSelect');
+  sel.innerHTML = '';
+  for (const id of state.order) {
+    const opt = document.createElement('option');
+    opt.value = id; opt.textContent = state.classes[id].name;
+    sel.appendChild(opt);
+  }
+  sel.value = currentClass || '';
+}
+function renderToolbar() {
+  document.getElementById('status').textContent = cls()
+    ? cls().students.length + '人 · ' + cls().sessions.length + '课'
+    : '未建班';
+}
+function renderEntrySelect() {
+  const c = cls();
+  const sel = document.getElementById('entrySession');
+  sel.innerHTML = '';
+  if (!c) return;
+  for (const s of c.sessions) {
+    const opt = document.createElement('option');
+    opt.value = s.id; opt.textContent = s.label;
+    sel.appendChild(opt);
+  }
+}
+function currentSessionId() {
+  const sel = document.getElementById('entrySession');
+  if (sel.value) return sel.value;
+  const c = cls();
+  return c && c.sessions.length ? c.sessions[c.sessions.length - 1].id : null;
+}
+function renderEntry() {
+  const c = cls();
+  const box = document.getElementById('entryList');
+  const prog = document.getElementById('entryProgress');
+  if (!c) {
+    prog.innerHTML = '';
+    box.innerHTML = '<div class="entry-empty">请先点「班级」新建班级</div>';
+    return;
+  }
+  if (!c.students.length) {
+    prog.innerHTML = '';
+    box.innerHTML = '<div class="entry-empty">还没有学生，点「学生」添加</div>';
+    return;
+  }
+  if (!c.sessions.length) {
+    prog.innerHTML = '';
+    box.innerHTML = '<div class="entry-empty">还没有课次，点「＋ 新增课次」开始记录（自动带今天日期）</div>';
+    return;
+  }
+  renderEntrySelect();
+  const sid = currentSessionId();
+  if (!sid) return;
+  // 当前课次进度统计
+  let attCnt = 0, scoreCnt = 0;
+  for (const name of c.students) {
+    const r = (c.records[name] && c.records[name][sid]) || {};
+    if (r.att) attCnt++;
+    if (r.score !== undefined && r.score !== null) scoreCnt++;
+  }
+  const total = c.students.length;
+  const pct = total ? Math.round(attCnt / total * 100) : 0;
+  prog.innerHTML = '<span>出勤已记 <b style="color:#2b579a">' + attCnt + '</b>/' + total + ' 人</span>' +
+    '<span>分数已填 <b style="color:#2b579a">' + scoreCnt + '</b>/' + total + ' 人</span>' +
+    '<div class="bar"><i style="width:' + pct + '%"></i></div>';
+  let html = '';
+  for (const name of c.students) {
+    const rec = (c.records[name] && c.records[name][sid]) || {};
+    const att = rec.att || '';
+    const clsAtt = att === '√' ? 'ok' : att === '半√' ? 'late' : att === '假' ? 'leave' : att === '缺' ? 'absent' : '';
+    const attTxt = att || '点';
+    const sc = (rec.score !== undefined) ? rec.score : '';
+    html += '<div class="entry-row">' +
+      '<span class="n">' + esc(name) + '</span>' +
+      '<span class="entry-att"><button class="b ' + clsAtt + '" onclick="cycleAtt(\'' + escJs(name) + '\',\'' + sid + '\')">' + esc(attTxt) + '</button></span>' +
+      '<span class="entry-score"><input type="number" inputmode="decimal" min="0" max="200" value="' + esc(sc) + '" onchange="setScore(\'' + escJs(name) + '\',\'' + sid + '\',this.value)"></span>' +
+      '</div>';
+  }
+  box.innerHTML = html;
+}
+
+// ================= 表格视图 =================
+function renderGrid() {
+  const c = cls();
+  const tbl = document.getElementById('grid');
+  if (!c) {
+    tbl.innerHTML = '<tr><td style="padding:40px;text-align:center;color:#999">请先「班级」新建班级</td></tr>';
+    return;
+  }
+  const hasSessions = c.sessions.length > 0;
+  let html = '<thead><tr><th>学生</th>';
+  for (const s of c.sessions) html += '<th class="rot" colspan="2">' + esc(s.label) + '</th>';
+  if (!hasSessions) html += '<th class="rot">（点「新增课次」开始）</th>';
+  html += '</tr>';
+  if (hasSessions) {
+    html += '<tr><th></th>';
+    for (let i = 0; i < c.sessions.length; i++) html += '<th style="font-size:10px;color:#888">勤</th><th style="font-size:10px;color:#888">分</th>';
+    html += '</tr></thead><tbody>';
+  } else {
+    html += '</thead><tbody>';
+  }
+  for (const name of c.students) {
+    html += '<tr><td class="name">' + esc(name) + '</td>';
+    for (const s of c.sessions) {
+      const rec = (c.records[name] && c.records[name][s.id]) || {};
+      const att = rec.att || '';
+      const attCls = att === '√' ? 'att-ok' : att === '半√' ? 'att-late' : att === '假' ? 'att-leave' : att === '缺' ? 'att-absent' : '';
+      const sc = (rec.score !== undefined) ? rec.score : '';
+      html += '<td class="att ' + attCls + '" onclick="cycleAtt(\'' + escJs(name) + '\',\'' + s.id + '\')">' + esc(att) + '</td>';
+      html += '<td class="score" onclick="editScore(this,\'' + escJs(name) + '\',\'' + s.id + '\',\'' + escJs(sc) + '\')">' + esc(sc) + '</td>';
+    }
+    html += '</tr>';
+  }
+  html += '</tbody>';
+  tbl.innerHTML = html;
+}
+function editScore(td, name, sid, cur) {
+  td.innerHTML = '<input type="number" min="0" max="200" value="' + esc(cur) + '" autofocus>';
+  const inp = td.querySelector('input');
+  inp.focus(); inp.select();
+  const done = () => { setScore(name, sid, inp.value); renderGrid(); };
+  inp.onblur = done;
+  inp.onkeydown = (e) => { if (e.key === 'Enter') done(); if (e.key === 'Escape') renderGrid(); e.stopPropagation(); };
+}
+
+// ================= 弹窗 =================
+function openClassModal() { renderClassList(); showModal('classModal'); }
+function renderClassList() {
+  const box = document.getElementById('classList');
+  box.innerHTML = '';
+  for (const id of state.order) {
+    const c = state.classes[id];
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.innerHTML = '<span>' + esc(c.name) + '（' + c.students.length + '人·' + c.sessions.length + '课）</span>' +
+      '<button onclick="switchClass(\'' + id + '\');closeModal(\'classModal\')">➤</button>' +
+      '<button onclick="renameClass(\'' + id + '\')">✎</button>' +
+      '<button onclick="removeClass(\'' + id + '\')">✕</button>';
+    box.appendChild(chip);
+  }
+  if (!state.order.length) box.innerHTML = '<span class="hint">还没有班级，上方输入班级名新建。</span>';
+}
+function openStudentsModal() { renderStudentsModal(); showModal('studentsModal'); }
+function renderStudentsModal() {
+  const c = cls();
+  document.getElementById('stuClassName').textContent = c ? c.name : '';
+  const box = document.getElementById('studentList');
+  box.innerHTML = '';
+  if (!c) return;
+  for (const n of c.students) {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.innerHTML = '<span>' + esc(n) + '</span><button onclick="removeStudent(\'' + escJs(n) + '\')">✕</button>';
+    box.appendChild(chip);
+  }
+}
+function openSessionsModal() { renderSessionsModal(); showModal('sessionsModal'); }
+function renderSessionsModal() {
+  const c = cls();
+  document.getElementById('sesClassName').textContent = c ? c.name : '';
+  const box = document.getElementById('sessionList');
+  box.innerHTML = '';
+  if (!c) return;
+  for (const s of c.sessions) {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.innerHTML = '<span>' + esc(s.label) + '</span><button onclick="renameSession(\'' + s.id + '\')">✎</button><button onclick="removeSession(\'' + s.id + '\')">✕</button>';
+    box.appendChild(chip);
+  }
+}
+function showModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+document.querySelectorAll('.modal-mask').forEach(m => {
+  m.addEventListener('click', (e) => { if (e.target === m) m.classList.remove('show'); });
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-mask.show').forEach(m => m.classList.remove('show'));
+});
+
+// ================= 汇总 =================
+function openSummary() {
+  const c = cls(); if (!c) return;
+  document.getElementById('sumClassName').textContent = c.name;
+  const stats = calcClass(c);
+  const cards = [
+    ['学生数', c.students.length], ['课次数', c.sessions.length],
+    ['平均出勤率', stats.avgRate + '%'], ['全勤人数', stats.fullAtt],
+    ['课堂总分', stats.sumScore], ['平均课堂分', stats.avgScore],
+  ];
+  document.getElementById('statCards').innerHTML = cards.map(x =>
+    '<div class="stat-card"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>').join('');
+  let html = '<thead><tr><th>姓名</th><th>出勤</th><th>迟到</th><th>请假</th><th>缺勤</th><th>出勤率</th><th>总分</th><th>均分</th></tr></thead><tbody>';
+  for (const s of stats.rows) {
+    html += '<tr><td>' + esc(s.name) + '</td><td>' + s.ok + '</td><td>' + s.late + '</td><td>' + s.leave + '</td><td>' + s.absent + '</td><td>' + s.rate + '%</td><td>' + s.sumScore + '</td><td>' + s.avgScore + '</td></tr>';
+  }
+  html += '</tbody>';
+  document.getElementById('summaryTable').innerHTML = html;
+  showModal('summaryModal');
+}
+function calcClass(c) {
+  const rows = [];
+  let sumRate = 0, sumScore = 0, scoreCnt = 0, fullAtt = 0;
+  for (const name of c.students) {
+    let ok = 0, late = 0, leave = 0, absent = 0, recd = 0;
+    let sSum = 0, sCnt = 0;
+    for (const s of c.sessions) {
+      const r = (c.records[name] && c.records[name][s.id]) || {};
+      const a = r.att || '';
+      if (a) recd++;
+      if (a === '√') ok++;
+      else if (a === '半√') late++;
+      else if (a === '假') leave++;
+      else if (a === '缺') absent++;
+      if (r.score !== undefined && r.score !== null) { sSum += r.score; sCnt++; }
+    }
+    const rate = recd ? Math.round(ok / recd * 100) : 0;
+    const avg = sCnt ? Math.round(sSum / sCnt * 10) / 10 : 0;
+    if (recd && ok === recd) fullAtt++;
+    sumRate += rate;
+    sumScore += sSum; scoreCnt += sCnt;
+    rows.push({ name, ok, late, leave, absent, rate, sumScore: sSum, avgScore: avg });
+  }
+  const n = c.students.length || 1;
+  return {
+    rows,
+    avgRate: Math.round(sumRate / n * 10) / 10,
+    avgScore: scoreCnt ? Math.round(sumScore / scoreCnt * 10) / 10 : 0,
+    sumScore, fullAtt,
+  };
+}
+
+// ================= 导出 =================
+function csvCell(v) {
+  v = String(v === undefined || v === null ? '' : v);
+  return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+}
+function download(name, content) {
+  const blob = new Blob(['\ufeff' + content], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function exportCSV() {
+  const c = cls(); if (!c) return;
+  const lines = [];
+  let h = ['姓名'];
+  for (const s of c.sessions) { h.push(s.label + '·出勤', s.label + '·分数'); }
+  lines.push(h.join(','));
+  for (const name of c.students) {
+    const row = [name];
+    for (const s of c.sessions) {
+      const r = (c.records[name] && c.records[name][s.id]) || {};
+      row.push(r.att || '', r.score !== undefined ? r.score : '');
+    }
+    lines.push(row.map(csvCell).join(','));
+  }
+  lines.push('');
+  const st = calcClass(c);
+  lines.push('姓名,出勤,迟到,请假,缺勤,出勤率%,课堂总分,课堂平均分');
+  for (const r of st.rows) {
+    lines.push([r.name, r.ok, r.late, r.leave, r.absent, r.rate, r.sumScore, r.avgScore].map(csvCell).join(','));
+  }
+  download('出勤课堂记录_' + c.name + '_' + today() + '.csv', lines.join('\n'));
+  alert('已导出 CSV（WPS 可打开）');
+}
+function exportSummaryCSV() {
+  const c = cls(); if (!c) return;
+  const st = calcClass(c);
+  const lines = ['姓名,出勤,迟到,请假,缺勤,出勤率%,课堂总分,课堂平均分'];
+  for (const r of st.rows) lines.push([r.name, r.ok, r.late, r.leave, r.absent, r.rate, r.sumScore, r.avgScore].map(csvCell).join(','));
+  download('汇总_' + c.name + '_' + today() + '.csv', lines.join('\n'));
+}
+function backupJSON() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '记录备份_' + today() + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  state.meta = state.meta || {};
+  state.meta.lastBackup = new Date().toISOString().slice(0, 10);
+  save();
+  hideNotice();
+  alert('备份文件已下载。请把它发到自己微信/存网盘，防止数据丢失。');
+}
+function restoreJSON() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.json';
+  inp.onchange = () => {
+    const f = inp.files[0]; if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      try {
+        const data = JSON.parse(rd.result);
+        if (!data.classes) throw new Error('bad');
+        if (!confirm('导入备份将覆盖当前所有数据，确定？')) return;
+        state = data;
+        currentClass = state.order && state.order[0] || null;
+        save(); renderAll();
+        alert('导入成功');
+      } catch (e) { alert('备份文件格式不正确'); }
+    };
+    rd.readAsText(f);
+  };
+  inp.click();
+}
+function today() {
+  const d = new Date();
+  return (d.getMonth() + 1) + '月' + d.getDate() + '号';
+}
+
+// ================= 工具 =================
+function esc(s) {
+  return String(s === undefined || s === null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function escJs(s) {
+  return String(s === undefined || s === null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+// ================= 备份提醒 =================
+function showNotice(html) {
+  const bar = document.getElementById('noticeBar');
+  bar.innerHTML = html;
+  bar.style.display = 'flex';
+}
+function hideNotice() { document.getElementById('noticeBar').style.display = 'none'; }
+function checkBackupReminder() {
+  try {
+    const hasData = (state.order || []).some(id => {
+      const c = state.classes[id];
+      return c && (c.students.length || Object.keys(c.records || {}).length);
+    });
+    if (!hasData) return;
+    const last = (state.meta && state.meta.lastBackup) || '';
+    let remind = false;
+    if (!last) remind = true;
+    else {
+      const days = Math.floor((new Date() - new Date(last)) / 86400000);
+      if (days >= 7) remind = true;
+    }
+    if (remind) {
+      showNotice('💡 建议备份数据（上次备份：' + (last || '从未备份') + '）' +
+        '<span class="right"><button class="btn primary" onclick="backupJSON()">现在备份</button>' +
+        '<button class="btn" onclick="hideNotice()">忽略</button></span>');
+    }
+  } catch (e) { /* 忽略 */ }
+}
+
+document.getElementById('classSelect').addEventListener('change', (e) => switchClass(e.target.value));
+document.getElementById('newStudentName').addEventListener('keydown', (e) => { if (e.key === 'Enter') addStudent(); });
+document.getElementById('newSessionName').addEventListener('keydown', (e) => { if (e.key === 'Enter') addSession(); });
+
+load();
+renderAll();
+checkBackupReminder();
+</script>
+</body>
+</html>
