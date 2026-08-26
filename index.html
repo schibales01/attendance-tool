@@ -109,6 +109,7 @@ td.score input { width: 46px; padding: 3px; text-align: center; border: 1px soli
 <div id="entryView">
   <div class="entry-toolbar">
     <select id="entrySession" onchange="currentSid=this.value;renderEntry()"></select>
+    <button class="btn" onclick="openSessionsModal()">课次</button>
     <button class="btn" onclick="openStudentsModal()">学生</button>
   </div>
   <div class="entry-progress" id="entryProgress"></div>
@@ -143,7 +144,7 @@ td.score input { width: 46px; padding: 3px; text-align: center; border: 1px soli
 <div class="modal-mask" id="sessionsModal">
   <div class="modal">
     <h2>课次管理（<span id="sesClassName"></span>）</h2>
-    <div class="row"><label>课次名</label><input id="newSessionName" placeholder="留空自动带日期" style="flex:1"><button class="btn primary" onclick="addSession()">新增</button></div>
+    <div class="row"><label>课次名</label><input id="newSessionName" placeholder="留空自动带日期" style="flex:1"><button class="btn primary" onclick="addSession(document.getElementById('newSessionName').value)">新增</button></div>
     <div class="session-list" id="sessionList"></div>
     <div class="row" style="margin-top:14px"><button class="btn" onclick="closeModal('sessionsModal')">关闭</button></div>
   </div>
@@ -247,12 +248,21 @@ function removeStudent(name) {
 }
 
 // ================= 课次 =================
-function addSession() {
-  const inp = document.getElementById('newSessionName');
+function addSession(explicit) {
   const c = cls(); if (!c) return;
-  const label = (inp && inp.value.trim()) ? inp.value.trim() : autoSessionLabel(c);
-  c.sessions.push({ id: 's' + Date.now(), label });
-  if (inp) inp.value = '';
+  let name;
+  if (explicit && explicit.trim()) {
+    name = explicit.trim();
+    const inp = document.getElementById('newSessionName');
+    if (inp) inp.value = '';
+  } else {
+    const def = autoSessionLabel(c);
+    const label = prompt('课次名称（可改成任意名字）：', def);
+    if (label === null) return;  // 取消
+    name = label.trim() || def;
+  }
+  c.sessions.push({ id: 's' + Date.now(), label: name });
+  currentSid = c.sessions[c.sessions.length - 1].id;
   save(); renderAll(); renderSessionsModal();
 }
 function renameSession(id) {
@@ -550,13 +560,26 @@ function csvCell(v) {
   v = String(v === undefined || v === null ? '' : v);
   return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
 }
-function download(name, content) {
-  const blob = new Blob(['\ufeff' + content], { type: 'text/csv;charset=utf-8' });
+function fallbackDownload(name, blob) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = name;
   a.click();
   URL.revokeObjectURL(a.href);
+  alert('文件已下载，在手机「文件管理 → 下载」里可以找到。');
+}
+function shareOrDownload(name, blob, mime) {
+  // 手机优先弹出系统分享（可发微信/WPS），不支持则直接下载
+  if (navigator.canShare && navigator.canShare({ files: [new File([blob], name, { type: mime })] })) {
+    navigator.share({ files: [new File([blob], name, { type: mime })], title: name })
+      .catch(() => fallbackDownload(name, blob));
+  } else {
+    fallbackDownload(name, blob);
+  }
+}
+function download(name, content, mime) {
+  const blob = new Blob(['\ufeff' + content], { type: mime || 'text/csv;charset=utf-8' });
+  shareOrDownload(name, blob, mime || 'text/csv;charset=utf-8');
 }
 function exportCSV() {
   const c = cls(); if (!c) return;
@@ -589,17 +612,13 @@ function exportSummaryCSV() {
   download('汇总_' + c.name + '_' + today() + '.csv', lines.join('\n'));
 }
 function backupJSON() {
+  const name = '记录保存_' + today() + '.json';
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = '记录保存_' + today() + '.json';
-  a.click();
-  URL.revokeObjectURL(a.href);
+  shareOrDownload(name, blob, 'application/json');
   state.meta = state.meta || {};
   state.meta.lastBackup = new Date().toISOString().slice(0, 10);
   save();
   hideNotice();
-  alert('保存文件已下载。请把它发到自己微信/存网盘，防止数据丢失。');
 }
 function restoreJSON() {
   const inp = document.createElement('input');
