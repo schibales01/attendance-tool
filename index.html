@@ -561,21 +561,53 @@ function csvCell(v) {
   return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
 }
 function fallbackDownload(name, blob) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(a.href);
-  alert('文件已下载，在手机「文件管理 → 下载」里可以找到。');
+  try {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    alert('文件「' + name + '」已开始下载，在手机「文件管理 → 下载」里找。');
+  } catch (e) {
+    alert('自动下载被浏览器拦截。请点「复制」或用分享功能。');
+  }
 }
 function shareOrDownload(name, blob, mime) {
-  // 手机优先弹出系统分享（可发微信/WPS），不支持则直接下载
-  if (navigator.canShare && navigator.canShare({ files: [new File([blob], name, { type: mime })] })) {
-    navigator.share({ files: [new File([blob], name, { type: mime })], title: name })
-      .catch(() => fallbackDownload(name, blob));
-  } else {
-    fallbackDownload(name, blob);
-  }
+  // 部分浏览器 canShare/share 会抛异常，全部 try-catch 保护，失败退回下载
+  try {
+    const file = new File([blob], name, { type: mime });
+    let canShare = false;
+    try { canShare = !!(navigator.canShare && navigator.canShare({ files: [file] })); } catch (e) { canShare = false; }
+    if (canShare) {
+      navigator.share({ files: [file], title: name })
+        .catch((e) => { if (e.name !== 'AbortError') fallbackDownload(name, blob); });
+      return;
+    }
+  } catch (e) { /* 忽略，走下载 */ }
+  fallbackDownload(name, blob);
+}
+function copyText(text) {
+  // 复制到剪贴板（兜底：下载/分享都不行时，粘贴到微信/WPS）
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(() => true).catch(() => legacyCopy(text));
+    }
+    return Promise.resolve(legacyCopy(text));
+  } catch (e) { return Promise.resolve(false); }
+}
+function legacyCopy(text) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) { return false; }
 }
 function download(name, content, mime) {
   const blob = new Blob(['\ufeff' + content], { type: mime || 'text/csv;charset=utf-8' });
@@ -601,8 +633,12 @@ function exportCSV() {
   for (const r of st.rows) {
     lines.push([r.name, r.ok, r.late, r.leave, r.absent, r.rate, r.sumScore, r.avgScore].map(csvCell).join(','));
   }
-  download('出勤课堂记录_' + c.name + '_' + today() + '.csv', lines.join('\n'));
-  alert('已导出 CSV（WPS 可打开）');
+  const csv = lines.join('\n');
+  const name = '出勤课堂记录_' + c.name + '_' + today() + '.csv';
+  download(name, csv);
+  copyText(csv).then(ok => {
+    if (ok) alert('数据已复制到剪贴板！可直接粘贴到微信/WPS；文件也已开始下载/可分享。');
+  });
 }
 function exportSummaryCSV() {
   const c = cls(); if (!c) return;
