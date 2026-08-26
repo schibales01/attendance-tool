@@ -87,7 +87,7 @@ td.score input { width: 46px; padding: 3px; text-align: center; border: 1px soli
   <button class="btn" onclick="openClassModal()">班级</button>
   <button class="btn" onclick="openSummary()">📊</button>
   <button class="btn" onclick="exportCSV()">⬇</button>
-  <button class="btn" onclick="backupJSON()">💾备份</button>
+  <button class="btn" onclick="backupJSON()">💾保存</button>
   <button class="btn" onclick="restoreJSON()">📥恢复</button>
 </header>
 <div id="toolbar">
@@ -108,7 +108,7 @@ td.score input { width: 46px; padding: 3px; text-align: center; border: 1px soli
 <!-- 录入视图 -->
 <div id="entryView">
   <div class="entry-toolbar">
-    <select id="entrySession" onchange="renderEntry()"></select>
+    <select id="entrySession" onchange="currentSid=this.value;renderEntry()"></select>
     <button class="btn" onclick="openStudentsModal()">学生</button>
   </div>
   <div class="entry-progress" id="entryProgress"></div>
@@ -169,6 +169,7 @@ const ATT_STATES = ['', '√', '半√', '假', '缺'];
 let state = { classes: {}, order: [] };
 let currentClass = null;
 let viewMode = 'entry';
+let currentSid = null;  // 当前录入的课次 id
 
 function load() {
   try {
@@ -181,7 +182,7 @@ function load() {
 }
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
-  catch (e) { alert('⚠ 浏览器存储不可用，请用「备份」保存数据。'); }
+  catch (e) { alert('⚠ 浏览器存储不可用，请用「保存」按钮把数据存成文件。'); }
 }
 function cls() { return state.classes[currentClass]; }
 function todayMD() {
@@ -327,12 +328,22 @@ function renderEntrySelect() {
     opt.value = s.id; opt.textContent = s.label;
     sel.appendChild(opt);
   }
+  // 保持当前选中课次；没有则默认最新课次
+  if (currentSid && c.sessions.some(s => s.id === currentSid)) {
+    sel.value = currentSid;
+  } else if (c.sessions.length) {
+    currentSid = c.sessions[c.sessions.length - 1].id;
+    sel.value = currentSid;
+  } else {
+    currentSid = null;
+  }
 }
 function currentSessionId() {
-  const sel = document.getElementById('entrySession');
-  if (sel.value) return sel.value;
   const c = cls();
-  return c && c.sessions.length ? c.sessions[c.sessions.length - 1].id : null;
+  if (!c || !c.sessions.length) return null;
+  if (currentSid && c.sessions.some(s => s.id === currentSid)) return currentSid;
+  currentSid = c.sessions[c.sessions.length - 1].id;
+  return currentSid;
 }
 function renderEntry() {
   const c = cls();
@@ -581,14 +592,14 @@ function backupJSON() {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = '记录备份_' + today() + '.json';
+  a.download = '记录保存_' + today() + '.json';
   a.click();
   URL.revokeObjectURL(a.href);
   state.meta = state.meta || {};
   state.meta.lastBackup = new Date().toISOString().slice(0, 10);
   save();
   hideNotice();
-  alert('备份文件已下载。请把它发到自己微信/存网盘，防止数据丢失。');
+  alert('保存文件已下载。请把它发到自己微信/存网盘，防止数据丢失。');
 }
 function restoreJSON() {
   const inp = document.createElement('input');
@@ -600,12 +611,12 @@ function restoreJSON() {
       try {
         const data = JSON.parse(rd.result);
         if (!data.classes) throw new Error('bad');
-        if (!confirm('导入备份将覆盖当前所有数据，确定？')) return;
+        if (!confirm('导入保存文件将覆盖当前所有数据，确定？')) return;
         state = data;
         currentClass = state.order && state.order[0] || null;
         save(); renderAll();
         alert('导入成功');
-      } catch (e) { alert('备份文件格式不正确'); }
+      } catch (e) { alert('保存文件格式不正确'); }
     };
     rd.readAsText(f);
   };
@@ -624,7 +635,7 @@ function escJs(s) {
   return String(s === undefined || s === null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
-// ================= 备份提醒 =================
+// ================= 保存提醒 =================
 function showNotice(html) {
   const bar = document.getElementById('noticeBar');
   bar.innerHTML = html;
@@ -646,8 +657,8 @@ function checkBackupReminder() {
       if (days >= 7) remind = true;
     }
     if (remind) {
-      showNotice('💡 建议备份数据（上次备份：' + (last || '从未备份') + '）' +
-        '<span class="right"><button class="btn primary" onclick="backupJSON()">现在备份</button>' +
+      showNotice('💡 建议保存数据（上次保存：' + (last || '从未保存') + '）' +
+        '<span class="right"><button class="btn primary" onclick="backupJSON()">现在保存</button>' +
         '<button class="btn" onclick="hideNotice()">忽略</button></span>');
     }
   } catch (e) { /* 忽略 */ }
