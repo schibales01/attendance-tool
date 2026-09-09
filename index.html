@@ -40,20 +40,20 @@ td.score input { width: 46px; padding: 3px; text-align: center; border: 1px soli
 .entry-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
 .entry-toolbar select { flex: 1; font-size: 16px; }
 .entry-toolbar .btn { white-space: nowrap; }
-.entry-head { display: flex; align-items: center; background: #eef2f8; border-radius: 10px 10px 0 0; padding: 10px 12px; font-weight: 700; font-size: 14px; }
-.entry-head .n { flex: 1.2; }
-.entry-head .a { flex: .9; text-align: center; }
-.entry-head .s { flex: 1; text-align: center; }
-.entry-row { display: flex; align-items: center; background: #fff; border-bottom: 1px solid #e8edf4; padding: 8px 12px; }
-.entry-row .n { flex: 1.2; font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.entry-att { flex: .9; text-align: center; }
-.entry-att .b { width: 100%; max-width: 110px; height: 46px; border: 2px solid #d5dde9; border-radius: 10px; background: #f7f9fc; font-size: 17px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.entry-head { display: flex; align-items: center; background: #eef2f8; border-radius: 10px 10px 0 0; padding: 8px 8px; font-weight: 700; font-size: 13px; }
+.entry-head .n { flex: 1.1; }
+.entry-head .a { flex: .62; text-align: center; }
+.entry-head .c, .entry-head .h { flex: .9; text-align: center; }
+.entry-row { display: flex; align-items: center; background: #fff; border-bottom: 1px solid #e8edf4; padding: 6px 8px; }
+.entry-row .n { flex: 1.1; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entry-att { flex: .62; text-align: center; }
+.entry-att .b { width: 100%; max-width: 88px; height: 42px; border: 2px solid #d5dde9; border-radius: 10px; background: #f7f9fc; font-size: 16px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .entry-att .b.ok { background: #eafaf1; border-color: #27ae60; color: #1e8449; }
 .entry-att .b.late { background: #fef9e7; border-color: #f39c12; color: #b9770e; }
 .entry-att .b.leave { background: #fdedec; border-color: #e74c3c; color: #c0392b; }
 .entry-att .b.absent { background: #eef0f1; border-color: #95a5a6; color: #7f8c8d; }
-.entry-score { flex: 1; text-align: right; }
-.entry-score input { width: 100%; max-width: 110px; height: 46px; text-align: center; font-size: 18px; border: 2px solid #d5dde9; border-radius: 10px; }
+.entry-fs, .entry-fh { flex: .9; text-align: center; }
+.entry-fs input, .entry-fh input { width: 100%; max-width: 78px; height: 42px; text-align: center; font-size: 17px; border: 2px solid #d5dde9; border-radius: 10px; }
 .entry-empty { background: #fff; border-radius: 10px; padding: 30px 16px; text-align: center; color: #999; }
 .entry-progress { background: #fff; border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-size: 13px; color: #555; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
 .entry-progress .bar { flex: 1; min-width: 80px; height: 8px; background: #e8edf4; border-radius: 4px; overflow: hidden; }
@@ -113,7 +113,7 @@ td.score input { width: 46px; padding: 3px; text-align: center; border: 1px soli
     <button class="btn" onclick="openStudentsModal()">学生</button>
   </div>
   <div class="entry-progress" id="entryProgress"></div>
-  <div class="entry-head"><span class="n">学生</span><span class="a">出勤</span><span class="s">课堂分</span></div>
+  <div class="entry-head"><span class="n">学生</span><span class="a">出勤</span><span class="c">课堂分</span><span class="h">作业分</span></div>
   <div id="entryList"></div>
 </div>
 
@@ -180,6 +180,17 @@ function load() {
   if (!state.classes) state = { classes: {}, order: [] };
   if (!state.meta) state.meta = {};
   if (state.order && state.order.length && !currentClass) currentClass = state.order[0];
+  // 迁移旧版本数据：旧字段 score(课堂分) → clsScore；补 hwScore 字段位
+  for (const cid in state.classes) {
+    const c = state.classes[cid];
+    const recs = c.records || {};
+    for (const n in recs) {
+      for (const sid in recs[n]) {
+        const r = recs[n][sid];
+        if (r && r.score !== undefined && r.clsScore === undefined) r.clsScore = r.score;
+      }
+    }
+  }
 }
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
@@ -287,11 +298,11 @@ function cycleAtt(name, sid) {
   rec.att = ATT_STATES[(idx + 1) % ATT_STATES.length];
   save(); renderGrid(); renderEntry();
 }
-function setScore(name, sid, val) {
+function setScore(name, sid, field, val) {
   const c = cls();
   const rec = c.records[name][sid] || (c.records[name][sid] = {});
   const n = parseFloat(val);
-  rec.score = (val === '' || isNaN(n)) ? undefined : n;
+  rec[field] = (val === '' || isNaN(n)) ? undefined : n;
   save();
 }
 
@@ -378,16 +389,18 @@ function renderEntry() {
   const sid = currentSessionId();
   if (!sid) return;
   // 当前课次进度统计
-  let attCnt = 0, scoreCnt = 0;
+  let attCnt = 0, cCnt = 0, hCnt = 0;
   for (const name of c.students) {
     const r = (c.records[name] && c.records[name][sid]) || {};
     if (r.att) attCnt++;
-    if (r.score !== undefined && r.score !== null) scoreCnt++;
+    if (r.clsScore !== undefined && r.clsScore !== null) cCnt++;
+    if (r.hwScore !== undefined && r.hwScore !== null) hCnt++;
   }
   const total = c.students.length;
   const pct = total ? Math.round(attCnt / total * 100) : 0;
-  prog.innerHTML = '<span>出勤已记 <b style="color:#2b579a">' + attCnt + '</b>/' + total + ' 人</span>' +
-    '<span>分数已填 <b style="color:#2b579a">' + scoreCnt + '</b>/' + total + ' 人</span>' +
+  prog.innerHTML = '<span>出勤 <b style="color:#2b579a">' + attCnt + '</b>/' + total + '</span>' +
+    '<span>课堂分 <b style="color:#2b579a">' + cCnt + '</b>/' + total + '</span>' +
+    '<span>作业分 <b style="color:#2b579a">' + hCnt + '</b>/' + total + '</span>' +
     '<div class="bar"><i style="width:' + pct + '%"></i></div>';
   let html = '';
   for (const name of c.students) {
@@ -395,11 +408,13 @@ function renderEntry() {
     const att = rec.att || '';
     const clsAtt = att === '√' ? 'ok' : att === '半√' ? 'late' : att === '假' ? 'leave' : att === '缺' ? 'absent' : '';
     const attTxt = att || '点';
-    const sc = (rec.score !== undefined) ? rec.score : '';
+    const cs = (rec.clsScore !== undefined) ? rec.clsScore : '';
+    const hs = (rec.hwScore !== undefined) ? rec.hwScore : '';
     html += '<div class="entry-row">' +
       '<span class="n">' + esc(name) + '</span>' +
       '<span class="entry-att"><button class="b ' + clsAtt + '" onclick="cycleAtt(\'' + escJs(name) + '\',\'' + sid + '\')">' + esc(attTxt) + '</button></span>' +
-      '<span class="entry-score"><input type="number" inputmode="decimal" min="0" max="200" value="' + esc(sc) + '" onchange="setScore(\'' + escJs(name) + '\',\'' + sid + '\',this.value)"></span>' +
+      '<span class="entry-fs"><input type="number" inputmode="decimal" min="0" max="200" value="' + esc(cs) + '" placeholder="分" onchange="setScore(\'' + escJs(name) + '\',\'' + sid + '\',\'clsScore\',this.value)"></span>' +
+      '<span class="entry-fh"><input type="number" inputmode="decimal" min="0" max="200" value="' + esc(hs) + '" placeholder="分" onchange="setScore(\'' + escJs(name) + '\',\'' + sid + '\',\'hwScore\',this.value)"></span>' +
       '</div>';
   }
   box.innerHTML = html;
@@ -415,12 +430,12 @@ function renderGrid() {
   }
   const hasSessions = c.sessions.length > 0;
   let html = '<thead><tr><th>学生</th>';
-  for (const s of c.sessions) html += '<th class="rot" colspan="2">' + esc(s.label) + '</th>';
+  for (const s of c.sessions) html += '<th class="rot" colspan="3">' + esc(s.label) + '</th>';
   if (!hasSessions) html += '<th class="rot">（点「新增课次」开始）</th>';
   html += '</tr>';
   if (hasSessions) {
     html += '<tr><th></th>';
-    for (let i = 0; i < c.sessions.length; i++) html += '<th style="font-size:10px;color:#888">勤</th><th style="font-size:10px;color:#888">分</th>';
+    for (let i = 0; i < c.sessions.length; i++) html += '<th style="font-size:10px;color:#888">勤</th><th style="font-size:10px;color:#888">课</th><th style="font-size:10px;color:#888">作</th>';
     html += '</tr></thead><tbody>';
   } else {
     html += '</thead><tbody>';
@@ -431,20 +446,22 @@ function renderGrid() {
       const rec = (c.records[name] && c.records[name][s.id]) || {};
       const att = rec.att || '';
       const attCls = att === '√' ? 'att-ok' : att === '半√' ? 'att-late' : att === '假' ? 'att-leave' : att === '缺' ? 'att-absent' : '';
-      const sc = (rec.score !== undefined) ? rec.score : '';
+      const cs = (rec.clsScore !== undefined) ? rec.clsScore : '';
+      const hs = (rec.hwScore !== undefined) ? rec.hwScore : '';
       html += '<td class="att ' + attCls + '" onclick="cycleAtt(\'' + escJs(name) + '\',\'' + s.id + '\')">' + esc(att) + '</td>';
-      html += '<td class="score" onclick="editScore(this,\'' + escJs(name) + '\',\'' + s.id + '\',\'' + escJs(sc) + '\')">' + esc(sc) + '</td>';
+      html += '<td class="score" onclick="editScore(this,\'' + escJs(name) + '\',\'' + s.id + '\',\'clsScore\',\'' + escJs(cs) + '\')">' + esc(cs) + '</td>';
+      html += '<td class="score" onclick="editScore(this,\'' + escJs(name) + '\',\'' + s.id + '\',\'hwScore\',\'' + escJs(hs) + '\')">' + esc(hs) + '</td>';
     }
     html += '</tr>';
   }
   html += '</tbody>';
   tbl.innerHTML = html;
 }
-function editScore(td, name, sid, cur) {
+function editScore(td, name, sid, field, cur) {
   td.innerHTML = '<input type="number" min="0" max="200" value="' + esc(cur) + '" autofocus>';
   const inp = td.querySelector('input');
   inp.focus(); inp.select();
-  const done = () => { setScore(name, sid, inp.value); renderGrid(); };
+  const done = () => { setScore(name, sid, field, inp.value); renderGrid(); };
   inp.onblur = done;
   inp.onkeydown = (e) => { if (e.key === 'Enter') done(); if (e.key === 'Escape') renderGrid(); e.stopPropagation(); };
 }
@@ -511,13 +528,13 @@ function openSummary() {
   const cards = [
     ['学生数', c.students.length], ['课次数', c.sessions.length],
     ['平均出勤率', stats.avgRate + '%'], ['全勤人数', stats.fullAtt],
-    ['课堂总分', stats.sumScore], ['平均课堂分', stats.avgScore],
+    ['课堂分均分', stats.avgScore], ['作业分均分', stats.hwAvg],
   ];
   document.getElementById('statCards').innerHTML = cards.map(x =>
     '<div class="stat-card"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>').join('');
-  let html = '<thead><tr><th>姓名</th><th>出勤</th><th>迟到</th><th>请假</th><th>缺勤</th><th>出勤率</th><th>总分</th><th>均分</th></tr></thead><tbody>';
+  let html = '<thead><tr><th>姓名</th><th>出勤</th><th>迟到</th><th>请假</th><th>缺勤</th><th>出勤率</th><th>课堂总分</th><th>课堂均分</th><th>作业总分</th><th>作业均分</th></tr></thead><tbody>';
   for (const s of stats.rows) {
-    html += '<tr><td>' + esc(s.name) + '</td><td>' + s.ok + '</td><td>' + s.late + '</td><td>' + s.leave + '</td><td>' + s.absent + '</td><td>' + s.rate + '%</td><td>' + s.sumScore + '</td><td>' + s.avgScore + '</td></tr>';
+    html += '<tr><td>' + esc(s.name) + '</td><td>' + s.ok + '</td><td>' + s.late + '</td><td>' + s.leave + '</td><td>' + s.absent + '</td><td>' + s.rate + '%</td><td>' + s.sumScore + '</td><td>' + s.avgScore + '</td><td>' + s.hwSum + '</td><td>' + s.hwAvg + '</td></tr>';
   }
   html += '</tbody>';
   document.getElementById('summaryTable').innerHTML = html;
@@ -525,10 +542,10 @@ function openSummary() {
 }
 function calcClass(c) {
   const rows = [];
-  let sumRate = 0, sumScore = 0, scoreCnt = 0, fullAtt = 0;
+  let sumRate = 0, cSum = 0, cCnt = 0, hSum = 0, hCnt = 0, fullAtt = 0;
   for (const name of c.students) {
     let ok = 0, late = 0, leave = 0, absent = 0, recd = 0;
-    let sSum = 0, sCnt = 0;
+    let sSum = 0, sCnt = 0, hSum2 = 0, hCnt2 = 0;
     for (const s of c.sessions) {
       const r = (c.records[name] && c.records[name][s.id]) || {};
       const a = r.att || '';
@@ -537,21 +554,25 @@ function calcClass(c) {
       else if (a === '半√') late++;
       else if (a === '假') leave++;
       else if (a === '缺') absent++;
-      if (r.score !== undefined && r.score !== null) { sSum += r.score; sCnt++; }
+      if (r.clsScore !== undefined && r.clsScore !== null) { sSum += r.clsScore; sCnt++; }
+      if (r.hwScore !== undefined && r.hwScore !== null) { hSum2 += r.hwScore; hCnt2++; }
     }
     const rate = recd ? Math.round(ok / recd * 100) : 0;
-    const avg = sCnt ? Math.round(sSum / sCnt * 10) / 10 : 0;
+    const cAvg = sCnt ? Math.round(sSum / sCnt * 10) / 10 : 0;
+    const hAvg = hCnt2 ? Math.round(hSum2 / hCnt2 * 10) / 10 : 0;
     if (recd && ok === recd) fullAtt++;
     sumRate += rate;
-    sumScore += sSum; scoreCnt += sCnt;
-    rows.push({ name, ok, late, leave, absent, rate, sumScore: sSum, avgScore: avg });
+    cSum += sSum; cCnt += sCnt; hSum += hSum2; hCnt += hCnt2;
+    rows.push({ name, ok, late, leave, absent, rate, sumScore: sSum, avgScore: cAvg, hwSum: hSum2, hwAvg: hAvg });
   }
   const n = c.students.length || 1;
   return {
     rows,
     avgRate: Math.round(sumRate / n * 10) / 10,
-    avgScore: scoreCnt ? Math.round(sumScore / scoreCnt * 10) / 10 : 0,
-    sumScore, fullAtt,
+    avgScore: cCnt ? Math.round(cSum / cCnt * 10) / 10 : 0,
+    hwAvg: hCnt ? Math.round(hSum / hCnt * 10) / 10 : 0,
+    sumScore: cSum, hwSum,
+    fullAtt,
   };
 }
 
@@ -625,21 +646,21 @@ function exportCSV() {
   const c = cls(); if (!c) return;
   const lines = [];
   let h = ['姓名'];
-  for (const s of c.sessions) { h.push(s.label + '·出勤', s.label + '·分数'); }
+  for (const s of c.sessions) { h.push(s.label + '·出勤', s.label + '·课堂分', s.label + '·作业分'); }
   lines.push(h.join(','));
   for (const name of c.students) {
     const row = [name];
     for (const s of c.sessions) {
       const r = (c.records[name] && c.records[name][s.id]) || {};
-      row.push(r.att || '', r.score !== undefined ? r.score : '');
+      row.push(r.att || '', r.clsScore !== undefined ? r.clsScore : '', r.hwScore !== undefined ? r.hwScore : '');
     }
     lines.push(row.map(csvCell).join(','));
   }
   lines.push('');
   const st = calcClass(c);
-  lines.push('姓名,出勤,迟到,请假,缺勤,出勤率%,课堂总分,课堂平均分');
+  lines.push('姓名,出勤,迟到,请假,缺勤,出勤率%,课堂总分,课堂均分,作业总分,作业均分');
   for (const r of st.rows) {
-    lines.push([r.name, r.ok, r.late, r.leave, r.absent, r.rate, r.sumScore, r.avgScore].map(csvCell).join(','));
+    lines.push([r.name, r.ok, r.late, r.leave, r.absent, r.rate, r.sumScore, r.avgScore, r.hwSum, r.hwAvg].map(csvCell).join(','));
   }
   const csv = lines.join('\n');
   doExport('出勤课堂记录_' + c.name + '_' + today() + '.csv', csv, 'text/csv;charset=utf-8');
@@ -647,8 +668,8 @@ function exportCSV() {
 function exportSummaryCSV() {
   const c = cls(); if (!c) return;
   const st = calcClass(c);
-  const lines = ['姓名,出勤,迟到,请假,缺勤,出勤率%,课堂总分,课堂平均分'];
-  for (const r of st.rows) lines.push([r.name, r.ok, r.late, r.leave, r.absent, r.rate, r.sumScore, r.avgScore].map(csvCell).join(','));
+  const lines = ['姓名,出勤,迟到,请假,缺勤,出勤率%,课堂总分,课堂均分,作业总分,作业均分'];
+  for (const r of st.rows) lines.push([r.name, r.ok, r.late, r.leave, r.absent, r.rate, r.sumScore, r.avgScore, r.hwSum, r.hwAvg].map(csvCell).join(','));
   doExport('汇总_' + c.name + '_' + today() + '.csv', lines.join('\n'), 'text/csv;charset=utf-8');
 }
 function backupJSON() {
