@@ -16,6 +16,7 @@ select, input { padding: 9px; border-radius: 8px; border: 1px solid #c9d4e5; fon
 #toolbar { background: #fff; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-bottom: 2px solid #e5e9f0; }
 #toolbar .spacer { flex: 1; }
 #status { color: #888; font-size: 13px; }
+.save-hint { color: #1e8449; font-size: 12px; }
 .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: #666; padding: 6px 12px; background: #fff; border-bottom: 1px solid #e5e9f0; }
 .legend span { display: inline-flex; align-items: center; gap: 4px; }
 .legend .dot { width: 13px; height: 13px; border-radius: 3px; border: 1px solid #ccc; display: inline-block; }
@@ -94,6 +95,7 @@ td.score input { width: 46px; padding: 3px; text-align: center; border: 1px soli
   <button class="btn primary" id="viewEntryBtn" onclick="setView('entry')">✍️ 录入</button>
   <button class="btn" id="viewTableBtn" onclick="setView('table')">📋 表格</button>
   <span id="status"></span>
+  <span id="saveHint" class="save-hint"></span>
   <span class="spacer"></span>
   <button class="btn primary" onclick="addSession()">＋ 新增课次</button>
 </div>
@@ -193,10 +195,37 @@ function load() {
   }
 }
 function save() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    const d = new Date();
+    const p = (n) => ('0' + n).slice(-2);
+    const el = document.getElementById('saveHint');
+    if (el) el.textContent = '已保存 ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
   catch (e) { alert('⚠ 浏览器存储不可用，请用「保存」按钮把数据存成文件。'); }
 }
+// 分数输入：内存立即更新 + 防抖落盘；失焦/切后台/关页面时立即落盘（防丢）
+let _saveTimer = null;
+function scheduleSave() {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => { _saveTimer = null; save(); }, 300);
+}
+function flushSave() {
+  if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
+  save();
+}
+function onScoreInput(name, sid, field, val) {
+  const c = cls();
+  const rec = c.records[name][sid] || (c.records[name][sid] = {});
+  const n = parseFloat(val);
+  rec[field] = (val === '' || isNaN(n)) ? undefined : n;
+  scheduleSave();
+}
 function cls() { return state.classes[currentClass]; }
+// 唯一 id：时间戳 + 随机后缀（防止快速连点同毫秒导致 id 重复）
+function uid(prefix) {
+  return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
 function todayMD() {
   const d = new Date();
   return (d.getMonth() + 1) + '.' + d.getDate();
@@ -209,7 +238,7 @@ function autoSessionLabel(c) {
 function addClass() {
   const name = document.getElementById('newClassName').value.trim();
   if (!name) { alert('请输入班级名'); return; }
-  const id = 'c' + Date.now();
+  const id = uid('c');
   state.classes[id] = { name, students: [], sessions: [], records: {} };
   state.order.push(id);
   currentClass = id;
@@ -272,7 +301,7 @@ function addSession(explicit) {
     if (label === null) return;  // 取消
     name = label.trim() || def;
   }
-  c.sessions.push({ id: 's' + Date.now(), label: name });
+  c.sessions.push({ id: uid('s'), label: name });
   currentSid = c.sessions[c.sessions.length - 1].id;
   save(); renderAll(); renderSessionsModal();
 }
@@ -413,8 +442,8 @@ function renderEntry() {
     html += '<div class="entry-row">' +
       '<span class="n">' + esc(name) + '</span>' +
       '<span class="entry-att"><button class="b ' + clsAtt + '" onclick="cycleAtt(\'' + escJs(name) + '\',\'' + sid + '\')">' + esc(attTxt) + '</button></span>' +
-      '<span class="entry-fs"><input type="number" inputmode="decimal" min="0" max="200" value="' + esc(cs) + '" placeholder="分" onchange="setScore(\'' + escJs(name) + '\',\'' + sid + '\',\'clsScore\',this.value)"></span>' +
-      '<span class="entry-fh"><input type="number" inputmode="decimal" min="0" max="200" value="' + esc(hs) + '" placeholder="分" onchange="setScore(\'' + escJs(name) + '\',\'' + sid + '\',\'hwScore\',this.value)"></span>' +
+      '<span class="entry-fs"><input type="number" inputmode="decimal" min="0" max="200" value="' + esc(cs) + '" placeholder="分" oninput="onScoreInput(\'' + escJs(name) + '\',\'' + sid + '\',\'clsScore\',this.value)" onblur="flushSave()"></span>' +
+      '<span class="entry-fh"><input type="number" inputmode="decimal" min="0" max="200" value="' + esc(hs) + '" placeholder="分" oninput="onScoreInput(\'' + escJs(name) + '\',\'' + sid + '\',\'hwScore\',this.value)" onblur="flushSave()"></span>' +
       '</div>';
   }
   box.innerHTML = html;
@@ -461,9 +490,13 @@ function editScore(td, name, sid, field, cur) {
   td.innerHTML = '<input type="number" min="0" max="200" value="' + esc(cur) + '" autofocus>';
   const inp = td.querySelector('input');
   inp.focus(); inp.select();
-  const done = () => { setScore(name, sid, field, inp.value); renderGrid(); };
-  inp.onblur = done;
-  inp.onkeydown = (e) => { if (e.key === 'Enter') done(); if (e.key === 'Escape') renderGrid(); e.stopPropagation(); };
+  inp.oninput = () => onScoreInput(name, sid, field, inp.value);
+  inp.onblur = () => { flushSave(); renderGrid(); };
+  inp.onkeydown = (e) => {
+    if (e.key === 'Enter') { flushSave(); renderGrid(); }
+    if (e.key === 'Escape') renderGrid();
+    e.stopPropagation();
+  };
 }
 
 // ================= 弹窗 =================
@@ -746,6 +779,11 @@ function checkBackupReminder() {
 document.getElementById('classSelect').addEventListener('change', (e) => switchClass(e.target.value));
 document.getElementById('newStudentName').addEventListener('keydown', (e) => { if (e.key === 'Enter') addStudent(); });
 document.getElementById('newSessionName').addEventListener('keydown', (e) => { if (e.key === 'Enter') addSession(); });
+
+// 兜底：切后台 / 关页面 / 离开页面前，把未落盘的改动立即保存
+document.addEventListener('visibilitychange', () => { if (document.hidden) flushSave(); });
+window.addEventListener('pagehide', () => flushSave());
+window.addEventListener('beforeunload', () => flushSave());
 
 load();
 renderAll();
