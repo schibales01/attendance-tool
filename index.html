@@ -100,10 +100,10 @@ td.score input { width: 46px; padding: 3px; text-align: center; border: 1px soli
   <button class="btn primary" onclick="addSession()">＋ 新增课次</button>
 </div>
 <div class="legend">
-  <span><span class="dot" style="background:#eafaf1"></span>√出勤</span>
-  <span><span class="dot" style="background:#fef9e7"></span>半√迟到</span>
-  <span><span class="dot" style="background:#fdedec"></span>假请假</span>
-  <span><span class="dot" style="background:#eef0f1"></span>缺缺勤</span>
+  <span><span class="dot" style="background:#eafaf1"></span>勤 = 出勤</span>
+  <span><span class="dot" style="background:#fef9e7"></span>迟 = 迟到</span>
+  <span><span class="dot" style="background:#fdedec"></span>假 = 请假</span>
+  <span><span class="dot" style="background:#eef0f1"></span>缺 = 缺勤</span>
   <span style="color:#888">点出勤格循环切换 · 分数格直接填</span>
 </div>
 
@@ -222,6 +222,12 @@ function onScoreInput(name, sid, field, val) {
   const n = parseFloat(val);
   rec[field] = (val === '' || isNaN(n)) ? undefined : n;
   scheduleSave();
+}
+// 出勤符号显示映射（内部数据仍存 √/半√，界面与导出显示 勤/迟）
+function attLabel(a) {
+  if (a === '√') return '勤';
+  if (a === '半√') return '迟';
+  return a || '';
 }
 function cls() { return state.classes[currentClass]; }
 // 唯一 id：时间戳 + 随机后缀（防止快速连点同毫秒导致 id 重复）
@@ -440,7 +446,7 @@ function renderEntry() {
     const rec = (c.records[name] && c.records[name][sid]) || {};
     const att = rec.att || '';
     const clsAtt = att === '√' ? 'ok' : att === '半√' ? 'late' : att === '假' ? 'leave' : att === '缺' ? 'absent' : '';
-    const attTxt = att || '点';
+    const attTxt = attLabel(att) || '点';
     const bs = (rec.baseScore !== undefined) ? rec.baseScore : '';
     const es = (rec.extraScore !== undefined) ? rec.extraScore : '';
     const hs = (rec.hwScore !== undefined) ? rec.hwScore : '';
@@ -484,7 +490,7 @@ function renderGrid() {
       const bs = (rec.baseScore !== undefined) ? rec.baseScore : '';
       const es = (rec.extraScore !== undefined) ? rec.extraScore : '';
       const hs = (rec.hwScore !== undefined) ? rec.hwScore : '';
-      html += '<td class="att ' + attCls + '" onclick="cycleAtt(\'' + escJs(name) + '\',\'' + s.id + '\')">' + esc(att) + '</td>';
+      html += '<td class="att ' + attCls + '" onclick="cycleAtt(\'' + escJs(name) + '\',\'' + s.id + '\')">' + esc(attLabel(att)) + '</td>';
       html += '<td class="score" onclick="editScore(this,\'' + escJs(name) + '\',\'' + s.id + '\',\'baseScore\',\'' + escJs(bs) + '\')">' + esc(bs) + '</td>';
       html += '<td class="score" onclick="editScore(this,\'' + escJs(name) + '\',\'' + s.id + '\',\'extraScore\',\'' + escJs(es) + '\')">' + esc(es) + '</td>';
       html += '<td class="score" onclick="editScore(this,\'' + escJs(name) + '\',\'' + s.id + '\',\'hwScore\',\'' + escJs(hs) + '\')">' + esc(hs) + '</td>';
@@ -696,7 +702,7 @@ function exportCSV() {
     const row = [name];
     for (const s of c.sessions) {
       const r = (c.records[name] && c.records[name][s.id]) || {};
-      row.push(r.att || '', r.baseScore !== undefined ? r.baseScore : '', r.extraScore !== undefined ? r.extraScore : '', r.hwScore !== undefined ? r.hwScore : '');
+      row.push(attLabel(r.att) || '', r.baseScore !== undefined ? r.baseScore : '', r.extraScore !== undefined ? r.extraScore : '', r.hwScore !== undefined ? r.hwScore : '');
     }
     lines.push(row.map(csvCell).join(','));
   }
