@@ -115,7 +115,7 @@ td.score input { width: 46px; padding: 3px; text-align: center; border: 1px soli
     <button class="btn" onclick="openStudentsModal()">学生</button>
   </div>
   <div class="entry-progress" id="entryProgress"></div>
-  <div class="entry-head"><span class="n">学生</span><span class="a">出勤</span><span class="c">基础</span><span class="e">附加</span><span class="h">作业</span></div>
+  <div class="entry-head"><span class="n">学生</span><span class="a">出勤</span><span class="c">课堂</span><span class="e">附加</span><span class="h">作业</span></div>
   <div id="entryList"></div>
 </div>
 
@@ -182,7 +182,7 @@ function load() {
   if (!state.classes) state = { classes: {}, order: [] };
   if (!state.meta) state.meta = {};
   if (state.order && state.order.length && !currentClass) currentClass = state.order[0];
-  // 迁移旧数据：score(初版) / clsScore(课堂分) → baseScore(基础分)
+  // 迁移旧数据：score(初版) / clsScore(旧课堂分) → baseScore(课堂分，内部字段名不变)
   for (const cid in state.classes) {
     const c = state.classes[cid];
     const recs = c.records || {};
@@ -437,7 +437,7 @@ function renderEntry() {
   const total = c.students.length;
   const pct = total ? Math.round(attCnt / total * 100) : 0;
   prog.innerHTML = '<span>出勤 <b style="color:#2b579a">' + attCnt + '</b>/' + total + '</span>' +
-    '<span>基础 <b style="color:#2b579a">' + cCnt + '</b>/' + total + '</span>' +
+    '<span>课堂 <b style="color:#2b579a">' + cCnt + '</b>/' + total + '</span>' +
     '<span>附加 <b style="color:#2b579a">' + eCnt + '</b>/' + total + '</span>' +
     '<span>作业 <b style="color:#2b579a">' + hCnt + '</b>/' + total + '</span>' +
     '<div class="bar"><i style="width:' + pct + '%"></i></div>';
@@ -453,7 +453,7 @@ function renderEntry() {
     html += '<div class="entry-row">' +
       '<span class="n">' + esc(name) + '</span>' +
       '<span class="entry-att"><button class="b ' + clsAtt + '" onclick="cycleAtt(\'' + escJs(name) + '\',\'' + sid + '\')">' + esc(attTxt) + '</button></span>' +
-      '<span class="entry-fs"><input type="number" inputmode="decimal" min="0" max="200" value="' + esc(bs) + '" placeholder="基" oninput="onScoreInput(\'' + escJs(name) + '\',\'' + sid + '\',\'baseScore\',this.value)" onblur="flushSave()"></span>' +
+      '<span class="entry-fs"><input type="number" inputmode="decimal" min="0" max="200" value="' + esc(bs) + '" placeholder="课" oninput="onScoreInput(\'' + escJs(name) + '\',\'' + sid + '\',\'baseScore\',this.value)" onblur="flushSave()"></span>' +
       '<span class="entry-fe"><input type="number" inputmode="decimal" min="0" max="200" value="' + esc(es) + '" placeholder="附" oninput="onScoreInput(\'' + escJs(name) + '\',\'' + sid + '\',\'extraScore\',this.value)" onblur="flushSave()"></span>' +
       '<span class="entry-fh"><input type="number" inputmode="decimal" min="0" max="200" value="' + esc(hs) + '" placeholder="作" oninput="onScoreInput(\'' + escJs(name) + '\',\'' + sid + '\',\'hwScore\',this.value)" onblur="flushSave()"></span>' +
       '</div>';
@@ -476,7 +476,7 @@ function renderGrid() {
   html += '</tr>';
   if (hasSessions) {
     html += '<tr><th></th>';
-    for (let i = 0; i < c.sessions.length; i++) html += '<th style="font-size:10px;color:#888">勤</th><th style="font-size:10px;color:#888">基</th><th style="font-size:10px;color:#888">附</th><th style="font-size:10px;color:#888">作</th>';
+    for (let i = 0; i < c.sessions.length; i++) html += '<th style="font-size:10px;color:#888">勤</th><th style="font-size:10px;color:#888">课</th><th style="font-size:10px;color:#888">附</th><th style="font-size:10px;color:#888">作</th>';
     html += '</tr></thead><tbody>';
   } else {
     html += '</thead><tbody>';
@@ -575,11 +575,11 @@ function openSummary() {
   const cards = [
     ['学生数', c.students.length], ['课次数', c.sessions.length],
     ['平均出勤率', stats.avgRate + '%'], ['全勤人数', stats.fullAtt],
-    ['基础均分', stats.baseAvg], ['附加均分', stats.extraAvg], ['作业均分', stats.hwAvg],
+    ['课堂均分', stats.baseAvg], ['附加均分', stats.extraAvg], ['作业均分', stats.hwAvg],
   ];
   document.getElementById('statCards').innerHTML = cards.map(x =>
     '<div class="stat-card"><div class="v">' + x[1] + '</div><div class="k">' + x[0] + '</div></div>').join('');
-  let html = '<thead><tr><th>姓名</th><th>出勤</th><th>迟到</th><th>请假</th><th>缺勤</th><th>出勤率</th><th>基础总分</th><th>基础均分</th><th>附加总分</th><th>附加均分</th><th>作业总分</th><th>作业均分</th></tr></thead><tbody>';
+  let html = '<thead><tr><th>姓名</th><th>出勤</th><th>迟到</th><th>请假</th><th>缺勤</th><th>出勤率</th><th>课堂总分</th><th>课堂均分</th><th>附加总分</th><th>附加均分</th><th>作业总分</th><th>作业均分</th></tr></thead><tbody>';
   for (const s of stats.rows) {
     html += '<tr><td>' + esc(s.name) + '</td><td>' + s.ok + '</td><td>' + s.late + '</td><td>' + s.leave + '</td><td>' + s.absent + '</td><td>' + s.rate + '%</td><td>' + s.baseSum + '</td><td>' + s.baseAvg + '</td><td>' + s.extraSum + '</td><td>' + s.extraAvg + '</td><td>' + s.hwSum + '</td><td>' + s.hwAvg + '</td></tr>';
   }
@@ -696,7 +696,7 @@ function exportCSV() {
   const c = cls(); if (!c) return;
   const lines = [];
   let h = ['姓名'];
-  for (const s of c.sessions) { h.push(s.label + '·出勤', s.label + '·基础', s.label + '·附加', s.label + '·作业'); }
+  for (const s of c.sessions) { h.push(s.label + '·出勤', s.label + '·课堂', s.label + '·附加', s.label + '·作业'); }
   lines.push(h.join(','));
   for (const name of c.students) {
     const row = [name];
@@ -708,7 +708,7 @@ function exportCSV() {
   }
   lines.push('');
   const st = calcClass(c);
-  lines.push('姓名,出勤,迟到,请假,缺勤,出勤率%,基础总分,基础均分,附加总分,附加均分,作业总分,作业均分');
+  lines.push('姓名,出勤,迟到,请假,缺勤,出勤率%,课堂总分,课堂均分,附加总分,附加均分,作业总分,作业均分');
   for (const r of st.rows) {
     lines.push([r.name, r.ok, r.late, r.leave, r.absent, r.rate, r.baseSum, r.baseAvg, r.extraSum, r.extraAvg, r.hwSum, r.hwAvg].map(csvCell).join(','));
   }
@@ -718,7 +718,7 @@ function exportCSV() {
 function exportSummaryCSV() {
   const c = cls(); if (!c) return;
   const st = calcClass(c);
-  const lines = ['姓名,出勤,迟到,请假,缺勤,出勤率%,基础总分,基础均分,附加总分,附加均分,作业总分,作业均分'];
+  const lines = ['姓名,出勤,迟到,请假,缺勤,出勤率%,课堂总分,课堂均分,附加总分,附加均分,作业总分,作业均分'];
   for (const r of st.rows) lines.push([r.name, r.ok, r.late, r.leave, r.absent, r.rate, r.baseSum, r.baseAvg, r.extraSum, r.extraAvg, r.hwSum, r.hwAvg].map(csvCell).join(','));
   doExport('汇总_' + c.name + '_' + today() + '.csv', lines.join('\n'), 'text/csv;charset=utf-8');
 }
