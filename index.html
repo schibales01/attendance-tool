@@ -17,6 +17,12 @@ select, input { padding: 9px; border-radius: 8px; border: 1px solid #c9d4e5; fon
 #toolbar .spacer { flex: 1; }
 #status { color: #888; font-size: 13px; }
 .save-hint { color: #1e8449; font-size: 12px; }
+.export-tree { max-height: 46vh; overflow: auto; border: 1px solid #e3e9f2; border-radius: 8px; padding: 8px; background: #fbfcfe; }
+.export-cls { margin-bottom: 10px; }
+.export-cls > label { font-weight: 700; display: flex; align-items: center; gap: 6px; font-size: 14px; }
+.export-cls .mini { font-size: 12px; color: #2b579a; margin-left: 8px; cursor: pointer; text-decoration: underline; }
+.export-ses { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0 20px; }
+.export-ses label { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; background: #fff; border: 1px solid #dbe3ef; padding: 4px 8px; border-radius: 6px; }
 .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: #666; padding: 6px 12px; background: #fff; border-bottom: 1px solid #e5e9f0; }
 .legend span { display: inline-flex; align-items: center; gap: 4px; }
 .legend .dot { width: 13px; height: 13px; border-radius: 3px; border: 1px solid #ccc; display: inline-block; }
@@ -87,7 +93,7 @@ td.score input { width: 46px; padding: 3px; text-align: center; border: 1px soli
   <select id="classSelect" title="选择班级"></select>
   <button class="btn" onclick="openClassModal()">班级</button>
   <button class="btn" onclick="openSummary()">📊</button>
-  <button class="btn" onclick="exportCSV()">⬇</button>
+  <button class="btn" onclick="openExportModal()">⬇</button>
   <button class="btn" onclick="backupJSON()">💾保存</button>
   <button class="btn" onclick="restoreJSON()">📥恢复</button>
 </header>
@@ -162,6 +168,24 @@ td.score input { width: 46px; padding: 3px; text-align: center; border: 1px soli
       <button class="btn" onclick="closeModal('summaryModal')">关闭</button>
     </div>
     <div class="hint">出勤率 = 出勤次数 ÷ 已记录课次数（√+半√+假+缺 都算已记录）。课堂平均分只算有分数的课次。</div>
+  </div>
+</div>
+<!-- 导出数据（勾选班级/课次） -->
+<div class="modal-mask" id="exportModal">
+  <div class="modal" style="width:min(640px,94vw)">
+    <h2>导出数据</h2>
+    <div class="row">
+      <button class="btn" onclick="exportPickAll()">全选所有</button>
+      <button class="btn" onclick="exportPickCurrent()">只选当前班</button>
+      <button class="btn" onclick="exportPickNone()">全部清空</button>
+    </div>
+    <div class="hint">勾选要导出的班级和课次（默认已勾选当前班的全部课次）。导出的是一张表，可直接发微信/WPS。</div>
+    <div id="exportTree" class="export-tree"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn primary" onclick="exportSelected()">导出所选（一张表）</button>
+      <button class="btn" onclick="exportCSV()">当前班完整导出</button>
+      <button class="btn" onclick="closeModal('exportModal')">取消</button>
+    </div>
   </div>
 </div>
 <script>
@@ -692,6 +716,111 @@ function doExport(name, content, mime, withBom) {
     }, 600);
   }
 }
+// ===== 导出选择（勾选班级/课次，导出为一张表）=====
+let exportSel = {};   // { classId: { sessionId: true } }
+
+function openExportModal() {
+  if (!state.order.length) { alert('还没有班级'); return; }
+  if (!Object.keys(exportSel).length) exportPickCurrent(true);  // 首次默认当前班
+  renderExportTree();
+  showModal('exportModal');
+}
+function renderExportTree() {
+  const box = document.getElementById('exportTree');
+  let html = '';
+  for (const cid of state.order) {
+    const c = state.classes[cid];
+    const sel = exportSel[cid] || {};
+    const allSel = c.sessions.length > 0 && c.sessions.every(s => sel[s.id]);
+    html += '<div class="export-cls">' +
+      '<label><input type="checkbox" ' + (allSel ? 'checked' : '') +
+      ' onchange="exportToggleClass(\'' + cid + '\',this.checked)"> ' + esc(c.name) +
+      '（' + c.students.length + '人 / ' + c.sessions.length + '课）</label>' +
+      '<span class="mini" onclick="exportToggleClass(\'' + cid + '\',true)">全选课次</span>' +
+      '<span class="mini" onclick="exportToggleClass(\'' + cid + '\',false)">清空</span>' +
+      '<div class="export-ses">';
+    for (const s of c.sessions) {
+      html += '<label><input type="checkbox" ' + (sel[s.id] ? 'checked' : '') +
+        ' onchange="exportToggleSession(\'' + cid + '\',\'' + s.id + '\',this.checked)"> ' + esc(s.label) + '</label>';
+    }
+    if (!c.sessions.length) html += '<span class="hint">（该班还没有课次）</span>';
+    html += '</div></div>';
+  }
+  box.innerHTML = html;
+}
+function exportToggleClass(cid, on) {
+  exportSel[cid] = {};
+  if (on) for (const s of state.classes[cid].sessions) exportSel[cid][s.id] = true;
+  renderExportTree();
+}
+function exportToggleSession(cid, sid, on) {
+  exportSel[cid] = exportSel[cid] || {};
+  if (on) exportSel[cid][sid] = true; else delete exportSel[cid][sid];
+  renderExportTree();
+}
+function exportPickCurrent(silent) {
+  exportSel = {};
+  if (currentClass && state.classes[currentClass]) {
+    exportSel[currentClass] = {};
+    for (const s of state.classes[currentClass].sessions) exportSel[currentClass][s.id] = true;
+  }
+  if (!silent) renderExportTree();
+}
+function exportPickAll() {
+  exportSel = {};
+  for (const cid of state.order) {
+    exportSel[cid] = {};
+    for (const s of state.classes[cid].sessions) exportSel[cid][s.id] = true;
+  }
+  renderExportTree();
+}
+function exportPickNone() { exportSel = {}; renderExportTree(); }
+
+function exportSelected() {
+  const picked = [];
+  for (const cid of state.order) {
+    const sel = exportSel[cid];
+    if (!sel) continue;
+    const c = state.classes[cid];
+    const sids = c.sessions.filter(s => sel[s.id]).map(s => s.id);
+    if (sids.length) picked.push({ cid, c, sids });
+  }
+  if (!picked.length) { alert('请至少勾选一个课次'); return; }
+  const multi = picked.length > 1;
+  // 列：按班级顺序 + 课次顺序
+  const cols = [];
+  for (const p of picked) {
+    for (const sid of p.sids) {
+      const s = p.c.sessions.find(x => x.id === sid);
+      if (s) cols.push({ cid: p.cid, sid, label: s.label, cname: p.c.name });
+    }
+  }
+  const header = ['姓名'];
+  if (multi) header.unshift('班级');
+  for (const col of cols) {
+    const pre = multi ? (col.cname + '·') : '';
+    header.push(pre + col.label + '·出勤', pre + col.label + '·课堂', pre + col.label + '·附加', pre + col.label + '·作业');
+  }
+  const lines = [header.join(',')];
+  for (const p of picked) {
+    for (const name of p.c.students) {
+      const row = [name];
+      if (multi) row.unshift(p.c.name);
+      for (const col of cols) {
+        if (col.cid !== p.cid || p.sids.indexOf(col.sid) < 0) { row.push('', '', '', ''); continue; }
+        const r = (p.c.records[name] && p.c.records[name][col.sid]) || {};
+        row.push(attLabel(r.att) || '',
+          r.baseScore !== undefined ? r.baseScore : '',
+          r.extraScore !== undefined ? r.extraScore : '',
+          r.hwScore !== undefined ? r.hwScore : '');
+      }
+      lines.push(row.map(csvCell).join(','));
+    }
+  }
+  doExport('成绩导出_' + today() + '.csv', lines.join('\n'), 'text/csv;charset=utf-8');
+  closeModal('exportModal');
+}
+
 function exportCSV() {
   const c = cls(); if (!c) return;
   const lines = [];
